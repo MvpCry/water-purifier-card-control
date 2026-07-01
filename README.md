@@ -101,11 +101,19 @@ LiquidCrystal_I2C by Frank de Brabander (LCD)
 
 ```
 净水机/
-├── 净水机.ino          # 主程序 (setup/loop/刷卡处理/显示)
-├── config.h            # 引脚定义和参数配置
-├── card_manager.h      # RFID刷卡管理模块
-├── water_control.h     # 出水控制模块 (流量/温度/阀门)
-└── README.md           # 说明文档
+├── 净水机.ino             # 原始主程序 (全硬件版)
+├── config.h               # 原始引脚定义和参数配置
+├── card_manager.h         # RFID刷卡管理模块
+├── water_control.h        # 出水控制模块 (流量/温度/阀门)
+│
+├── simulate.cpp           # [纯软件] PC 模拟器, 无需任何硬件
+│
+├── 净水机_hil.ino         # [HIL] Arduino 主程序 (ST7789 彩屏版)
+├── config_hil.h           # [HIL] 引脚配置 (彩屏 + HIL)
+├── water_control_hil.h    # [HIL] 出水控制 (Serial 通信替代传感器/继电器)
+├── pc_simulator.py        # [HIL] PC 端传感器+被控对象模拟器
+│
+└── README.md              # 说明文档
 ```
 
 ## 定制修改
