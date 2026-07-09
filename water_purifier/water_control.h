@@ -16,8 +16,11 @@
 #define WATER_CONTROL_H
 
 #include "config.h"
-// 注意: <OneWire.h> 和 <DallasTemperature.h> 在净水机.ino 顶部引入
-// 确保 .ino 中 #include 顺序为: 库 → config.h → card_manager.h → water_control.h
+
+#if USE_TEMP_SENSOR
+  #include <OneWire.h>
+  #include <DallasTemperature.h>
+#endif
 
 // ============================
 // 系统状态枚举
@@ -30,9 +33,10 @@ enum SystemState {
   STATE_ERROR,       // 故障
 };
 
-// 全局传感器对象 (在 .ino 中定义)
-extern OneWire oneWire;
-extern DallasTemperature sensors;
+#if USE_TEMP_SENSOR
+  extern OneWire oneWire;
+  extern DallasTemperature sensors;
+#endif
 
 // ============================
 // WaterControl 类
@@ -142,7 +146,7 @@ void WaterControl::begin() {
   pinMode(RELAY_PURE_WATER, OUTPUT);
   pinMode(RELAY_HOT_WATER,  OUTPUT);
   pinMode(RELAY_HEATER,     OUTPUT);
-  pinMode(LED_READY,         OUTPUT);
+  // LED_READY (D13) 与 SPI-SCK 冲突, 不初始化, 用 TFT 屏幕代替
   pinMode(LED_PURE_DISPENSE, OUTPUT);
   pinMode(LED_HOT_DISPENSE,  OUTPUT);
   pinMode(LED_ERROR,         OUTPUT);
@@ -154,12 +158,22 @@ void WaterControl::begin() {
   setHeater(false);
   digitalWrite(BUZZER_PIN, LOW);
 
-  // ---- 温度传感器初始化 ----
+  // ---- 温度传感器 (可选) ----
+#if USE_TEMP_SENSOR
+  pinMode(TEMP_SENSOR_PIN, INPUT_PULLUP);
+  delay(5);
   sensors.begin();
-  sensors.setWaitForConversion(false);  // 非阻塞模式
-  sensors.requestTemperatures();        // 启动第一次转换
-  _tempConversionStarted = true;
-  _tempRequestMs = millis();
+  if (sensors.getDeviceCount() > 0) {
+    sensors.setWaitForConversion(false);
+    sensors.requestTemperatures();
+    _tempConversionStarted = true;
+    _tempRequestMs = millis();
+  } else {
+    _tempConversionStarted = false;
+  }
+#else
+  _tempConversionStarted = false;
+#endif
 
   // ---- 状态初始化 ----
   _state           = STATE_IDLE;
@@ -170,8 +184,7 @@ void WaterControl::begin() {
   _currentTemp     = 25.0;  // 默认室温，首次温度读取后更新
   _lastFlowPulseMs = 0;
 
-  // 就绪指示灯亮
-  digitalWrite(LED_READY, HIGH);
+  // LED_READY (D13) 禁用 — 与 SPI-SCK 冲突
 }
 
 // ---- 出水控制 ----
@@ -195,7 +208,6 @@ bool WaterControl::startPureWater(int targetMl) {
   _lastFlowPulseMs  = millis();
 
   digitalWrite(LED_PURE_DISPENSE, HIGH);
-  digitalWrite(LED_READY, LOW);
 
   return true;
 }
@@ -222,7 +234,6 @@ bool WaterControl::startHotWater(int targetMl) {
   _lastFlowPulseMs  = millis();
 
   digitalWrite(LED_HOT_DISPENSE, HIGH);
-  digitalWrite(LED_READY, LOW);
 
   return true;
 }
@@ -237,14 +248,13 @@ void WaterControl::stopDispensing() {
 
   digitalWrite(LED_PURE_DISPENSE, LOW);
   digitalWrite(LED_HOT_DISPENSE, LOW);
-  digitalWrite(LED_READY, HIGH);
+  // LED_READY (D13) 禁用 — SPI-SCK 冲突
 }
 
 // ---- 温度读取 (非阻塞) ----
 
 float WaterControl::getTemperature() {
-  // 需要先启动第一次转换（在 begin() 中已启动）
-  // 之后每次读取时检查上一次转换是否完成
+#if USE_TEMP_SENSOR
   if (_tempConversionStarted &&
       millis() - _tempRequestMs >= TEMP_CONVERSION_MS) {
 
@@ -260,7 +270,7 @@ float WaterControl::getTemperature() {
     sensors.requestTemperatures();
     _tempRequestMs = millis();
   }
-
+#endif
   return _currentTemp;
 }
 
@@ -338,7 +348,6 @@ void WaterControl::update() {
       // --- 热水就绪 → 回到待机 ---
       if (isHotWaterReady()) {
         _state = STATE_IDLE;
-        digitalWrite(LED_READY, HIGH);
       }
       break;
     }
@@ -361,7 +370,11 @@ void WaterControl::update() {
 // ---- 热水就绪判断 ----
 
 bool WaterControl::isHotWaterReady() {
+#if USE_TEMP_SENSOR
   return (getTemperature() >= HOT_WATER_MIN_TEMP);
+#else
+  return false;  // 无传感器时不允许出热水
+#endif
 }
 
 // ---- 流量计 ISR (中断上下文) ----
@@ -379,7 +392,6 @@ void WaterControl::setHeater(bool on) {
 
   if (on) {
     _state = STATE_HEATING;
-    digitalWrite(LED_READY, LOW);
   }
 }
 
